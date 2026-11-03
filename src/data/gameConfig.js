@@ -32,7 +32,7 @@ export const LEVELS = [
     id: 1,
     title: 'Parque de los Juegos',
     subtitle: 'Nivel 1: Plaza con árboles, toboganes y pajaritos',
-    targetScore: 15,
+    targetScore: 20,
     theme: 'park',
     skyColorTop: '#BAE6FD',
     skyColorBottom: '#E0F2FE',
@@ -40,13 +40,13 @@ export const LEVELS = [
     groundSubColor: '#22C55E',
     elements: ['tree', 'swing', 'flowers', 'birds', 'clouds'],
     enemySpeed: 2.8,
-    spawnRate: 90 // frames
+    spawnRate: 90
   },
   {
     id: 2,
     title: 'La Gran Avenida',
     subtitle: 'Nivel 2: Calles coloridas, semáforos y autos divertidos',
-    targetScore: 25,
+    targetScore: 35,
     theme: 'city',
     skyColorTop: '#FDBA74',
     skyColorBottom: '#FED7AA',
@@ -60,7 +60,7 @@ export const LEVELS = [
     id: 3,
     title: 'Peatonal de Fantasía',
     subtitle: 'Nivel 3: Paseo de compras, globos y jugueterías',
-    targetScore: 35,
+    targetScore: 50,
     theme: 'mall',
     skyColorTop: '#DDD6FE',
     skyColorBottom: '#F3E8FF',
@@ -81,9 +81,13 @@ export const CANDY_TYPES = [
   { type: 'star_candy', name: 'Estrella Arcoíris Mágica', points: 10, color: '#F59E0B', icon: '⭐' }
 ];
 
+export const SPECIAL_ITEMS = [
+  { type: 'juice', name: 'Juguito de Frutas', effect: 'energy', color: '#10B981', icon: '🧃' },
+  { type: 'shield', name: 'Burbuja Protectora', effect: 'shield', color: '#06B6D4', duration: 5, icon: '🛡️' }
+];
+
 export const NAUGHTY_KIDS = [
   { name: 'Tomás', capColor: '#EF4444', clothesColor: '#F97316', hat: 'cap_backward', phrase: '¡Dame un caramelo!' },
   { name: 'Lula', capColor: '#8B5CF6', clothesColor: '#10B981', hat: 'bow', phrase: '¡Cosquillas!' },
   { name: 'Nico', capColor: '#06B6D4', clothesColor: '#EAB308', hat: 'skate_helmet', phrase: '¡Por aquí!' }
 ];
-

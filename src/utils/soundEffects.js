@@ -161,6 +161,42 @@ class SoundController {
     });
   }
 
+  // Sonido al tomar juguito / recuperar energía
+  playJuice() {
+    if (this.isMuted) return;
+    this.init();
+    const notes = [440, 554.37, 659.25, 880]; // A4, C#5, E5, A5
+    notes.forEach((freq, idx) => {
+      setTimeout(() => {
+        this.playTone(freq, 'sine', 0.15, 0.2);
+      }, idx * 60);
+    });
+  }
+
+  // Sonido de activación de escudo burbuja
+  playShield() {
+    if (this.isMuted) return;
+    this.init();
+    const notes = [587.33, 739.99, 880, 1174.66]; // D5, F#5, A5, D6
+    notes.forEach((freq, idx) => {
+      setTimeout(() => {
+        this.playTone(freq, 'triangle', 0.18, 0.22);
+      }, idx * 70);
+    });
+  }
+
+  // Sonido de cambio de turno
+  playTurnSwitch() {
+    if (this.isMuted) return;
+    this.init();
+    const notes = [392, 523.25, 659.25];
+    notes.forEach((freq, idx) => {
+      setTimeout(() => {
+        this.playTone(freq, 'triangle', 0.2, 0.2);
+      }, idx * 100);
+    });
+  }
+
   // Música de fondo sintetizada (Loop rítmico alegre y suave)
   startBgm() {
     if (this.bgmPlaying || this.isMuted) return;

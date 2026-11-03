@@ -1,4 +1,4 @@
-import { CANDY_TYPES, NAUGHTY_KIDS } from '../data/gameConfig';
+import { CANDY_TYPES, NAUGHTY_KIDS, SPECIAL_ITEMS } from '../data/gameConfig';
 import { sounds } from '../utils/soundEffects';
 
 export class GameEngine {
@@ -14,10 +14,11 @@ export class GameEngine {
     this.isPaused = false;
     this.autoRun = false;
     this.score = 0;
-    this.lives = 3;
+    this.energy = 100; // Energía del turno actual (100% = 3 toques)
+    this.shieldTimer = 0; // Temporizador de burbuja protectora (5 segundos = 300 frames)
     this.levelProgress = 0;
     this.gameTime = 0;
-    this.targetScore = level.targetScore || 20;
+    this.targetScore = level.targetScore || 25;
 
     // Dimensiones virtuales lógicas
     this.width = 960;
@@ -43,6 +44,7 @@ export class GameEngine {
 
     // Entidades
     this.candies = [];
+    this.specialItems = [];
     this.enemies = [];
     this.particles = [];
     this.floatTexts = [];
@@ -67,6 +69,7 @@ export class GameEngine {
 
     // Spawn timers
     this.candySpawnTimer = 0;
+    this.specialSpawnTimer = 0;
     this.enemySpawnTimer = 0;
 
     this.initPlatforms();
@@ -99,12 +102,12 @@ export class GameEngine {
     this.levelProgress = 0;
     this.enemies = [];
     this.candies = [];
+    this.specialItems = [];
     this.initPlatforms();
   }
 
   initPlatforms() {
     this.platforms = [
-      // Plataformas flotantes en alturas alcanzables
       { x: 300, y: 340, w: 140, h: 22, type: 'cloud' },
       { x: 540, y: 260, w: 160, h: 22, type: 'wood' },
       { x: 780, y: 320, w: 130, h: 22, type: 'cloud' },
@@ -192,6 +195,19 @@ export class GameEngine {
   update() {
     this.gameTime++;
 
+    // Temporizador de escudo protector (5 segundos = 300 frames)
+    if (this.shieldTimer > 0) {
+      this.shieldTimer--;
+      const secondsLeft = Math.ceil(this.shieldTimer / 60);
+      if (this.callbacks.onShieldChange) {
+        this.callbacks.onShieldChange(secondsLeft);
+      }
+    } else {
+      if (this.callbacks.onShieldChange) {
+        this.callbacks.onShieldChange(0);
+      }
+    }
+
     // Movimiento horizontal
     let targetVx = 0;
     if (this.keys.left) {
@@ -210,21 +226,20 @@ export class GameEngine {
     this.player.crouching = this.keys.down && this.player.isGrounded;
 
     // Gravedad
-    this.player.vy += 0.65; // gravedad suave
+    this.player.vy += 0.65;
     if (this.player.vy > 14) this.player.vy = 14;
     this.player.y += this.player.vy;
 
-    // Ciclo de animación al correr
+    // Animación de correr
     if (Math.abs(this.player.vx) > 0.5 && this.player.isGrounded) {
       this.player.runCycle += 0.2;
     } else {
       this.player.runCycle = 0;
     }
 
-    // Colisión con el suelo (y = 440 suelo base)
+    // Colisión con suelo
     const floorY = 440;
     const playerBottom = this.player.y + this.player.h;
-
     this.player.isGrounded = false;
 
     if (playerBottom >= floorY) {
@@ -236,7 +251,6 @@ export class GameEngine {
 
     // Colisiones con plataformas flotantes
     for (const plat of this.platforms) {
-      // Detección cuando viene cayendo por arriba
       if (
         this.player.vy >= 0 &&
         this.player.x + this.player.w * 0.7 > plat.x &&
@@ -251,7 +265,7 @@ export class GameEngine {
       }
     }
 
-    // Límites de pantalla virtual (solo límite izquierdo, la derecha es infinita)
+    // Límite izquierdo (hacia la derecha es infinito)
     if (this.player.x < 20) this.player.x = 20;
 
     // Generar plataformas continuamente hacia adelante
@@ -267,15 +281,14 @@ export class GameEngine {
         type
       });
     }
-    // Descartar plataformas viejas que quedaron muy atrás
-    this.platforms = this.platforms.filter(p => p.x > this.scrollX - 400);
+    this.platforms = this.platforms.filter((p) => p.x > this.scrollX - 400);
 
     // Suavizado de cámara según posición de Pedro/Simoné
     const targetScroll = this.player.x - this.width * 0.35;
     this.scrollX += (targetScroll - this.scrollX) * 0.08;
     if (this.scrollX < 0) this.scrollX = 0;
 
-    // Temporizador de invulnerabilidad tras colisión
+    // Temporizador de invulnerabilidad tras toque
     if (this.player.invulnerableTimer > 0) {
       this.player.invulnerableTimer--;
     }
@@ -285,6 +298,13 @@ export class GameEngine {
     if (this.candySpawnTimer > 65) {
       this.candySpawnTimer = 0;
       this.spawnCandy();
+    }
+
+    // Spawner de ítems especiales (Juguitos 🧃 y Burbujas Protectoras 🛡️)
+    this.specialSpawnTimer++;
+    if (this.specialSpawnTimer > 180) {
+      this.specialSpawnTimer = 0;
+      this.spawnSpecialItem();
     }
 
     // Spawner de chicos traviesos (enemigos amigables)
@@ -301,13 +321,11 @@ export class GameEngine {
       c.wobble += 0.06;
       c.floatY = Math.sin(c.wobble) * 8;
 
-      // Colisión con el jugador
       const px = this.player.x + this.player.w / 2;
       const py = this.player.y + this.player.h / 2;
       const dist = Math.hypot(px - c.x, py - (c.y + c.floatY));
 
       if (dist < 46) {
-        // Recolectada!
         this.score += c.points;
         this.levelProgress += c.points;
         sounds.playCollect(c.kind);
@@ -322,7 +340,6 @@ export class GameEngine {
           this.callbacks.onProgress(this.levelProgress, this.targetScore);
         }
 
-        // Revisar si completó el nivel
         if (this.levelProgress >= this.targetScore) {
           this.triggerLevelWin();
         }
@@ -331,27 +348,61 @@ export class GameEngine {
         continue;
       }
 
-      // Eliminar golosinas muy atrás
       if (c.x < this.scrollX - 200) {
         this.candies.splice(i, 1);
       }
     }
 
-    // Actualizar enemigos amigables
+    // Actualizar Ítems Especiales (Juguito y Escudo)
+    for (let i = this.specialItems.length - 1; i >= 0; i--) {
+      const item = this.specialItems[i];
+      item.wobble += 0.07;
+      item.floatY = Math.sin(item.wobble) * 9;
+
+      const px = this.player.x + this.player.w / 2;
+      const py = this.player.y + this.player.h / 2;
+      const dist = Math.hypot(px - item.x, py - (item.y + item.floatY));
+
+      if (dist < 48) {
+        if (item.type === 'juice') {
+          // Recuperar +40% de energía
+          this.energy = Math.min(100, this.energy + 40);
+          sounds.playJuice();
+          this.addFloatText('¡+40% ENERGÍA! 🧃', item.x, item.y - 15, '#10B981');
+          this.createSparkles(item.x, item.y, 14, '#34D399');
+          if (this.callbacks.onEnergyChange) {
+            this.callbacks.onEnergyChange(this.energy);
+          }
+        } else if (item.type === 'shield') {
+          // Activar 5 segundos de burbuja protectora (300 frames)
+          this.shieldTimer = 300;
+          sounds.playShield();
+          this.addFloatText('¡BURBUJA ESCUDO! 🛡️', item.x, item.y - 15, '#06B6D4');
+          this.createSparkles(item.x, item.y, 18, '#38BDF8');
+        }
+
+        this.specialItems.splice(i, 1);
+        continue;
+      }
+
+      if (item.x < this.scrollX - 200) {
+        this.specialItems.splice(i, 1);
+      }
+    }
+
+    // Actualizar chicos traviesos (enemigos amigables)
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       e.x -= e.speed;
       e.animFrame += 0.15;
       e.jumpTimer += 0.05;
 
-      // Saltito simpático de vez en cuando
       if (e.isJumper) {
         e.yOffset = Math.abs(Math.sin(e.jumpTimer)) * -25;
       } else {
         e.yOffset = 0;
       }
 
-      // Colisión con el jugador
       const pBox = {
         x: this.player.x + 12,
         y: this.player.y + 10,
@@ -372,11 +423,20 @@ export class GameEngine {
         pBox.y + pBox.h > eBox.y;
 
       if (isColliding && this.player.invulnerableTimer === 0) {
-        // ¡Ouch! Cosquillas / te roban 1 vida y un par de golosinas
-        this.handlePlayerHit(e);
+        // ¿Tiene escudo activo?
+        if (this.shieldTimer > 0) {
+          // El enemigo rebota cómicamente sin hacer daño
+          e.speed = -Math.abs(e.speed) * 1.5;
+          e.x += 40;
+          this.addFloatText('¡REBOTE! 🛡️', e.x, e.y - 20, '#38BDF8');
+          this.createSparkles(e.x, e.y, 8, '#06B6D4');
+          sounds.playJump();
+        } else {
+          // Recibe cosquillas y pierde energía
+          this.handlePlayerHit(e);
+        }
       }
 
-      // Remover enemigos que ya pasaron de largo
       if (e.x < this.scrollX - 200) {
         this.enemies.splice(i, 1);
       }
@@ -408,9 +468,14 @@ export class GameEngine {
   }
 
   handlePlayerHit(enemy) {
-    this.player.invulnerableTimer = 100; // ~1.7 segundos
-    this.lives--;
+    this.player.invulnerableTimer = 90; // ~1.5 segundos
     sounds.playOuch();
+
+    // Descuenta 34% de energía (3 toques agotan la vida actual)
+    this.energy = Math.max(0, this.energy - 34);
+    if (this.callbacks.onEnergyChange) {
+      this.callbacks.onEnergyChange(this.energy);
+    }
 
     // Pierde 2 golosinas si tiene
     const lostPoints = Math.min(2, this.score);
@@ -418,34 +483,30 @@ export class GameEngine {
     if (this.callbacks.onScoreChange) {
       this.callbacks.onScoreChange(this.score);
     }
-    if (this.callbacks.onLivesChange) {
-      this.callbacks.onLivesChange(this.lives);
-    }
 
-    this.addFloatText("¡Oops! -1 ❤️", this.player.x + 20, this.player.y - 15, '#EF4444');
+    this.addFloatText('¡Oops! -34% ⚡', this.player.x + 20, this.player.y - 15, '#EF4444');
     this.createPuff(this.player.x + this.player.w / 2, this.player.y + this.player.h / 2, 12, '#FCA5A5');
 
     // Impulso hacia atrás cómico
     this.player.vx = -4;
     this.player.vy = -5;
 
-    if (this.lives <= 0) {
-      this.triggerGameOver();
+    // Si la energía llegó a cero, pierde esta vida y pasa el turno
+    if (this.energy <= 0) {
+      this.triggerTurnOver();
     }
   }
 
   spawnCandy() {
     const types = CANDY_TYPES;
-    // Ponderación: más comunes los caramelos normales, más raros chupetines y estrellas
     const rand = Math.random();
     let picked;
-    if (rand < 0.45) picked = types[0]; // pink
-    else if (rand < 0.7) picked = types[1]; // blue
-    else if (rand < 0.85) picked = types[3]; // choc
-    else if (rand < 0.95) picked = types[4]; // lollipop
-    else picked = types[5]; // estrella dorada
+    if (rand < 0.45) picked = types[0];
+    else if (rand < 0.7) picked = types[1];
+    else if (rand < 0.85) picked = types[3];
+    else if (rand < 0.95) picked = types[4];
+    else picked = types[5];
 
-    // Alturas posibles: en el piso o flotando arriba de plataformas
     const spawnY = Math.random() > 0.4 ? 385 : (Math.random() > 0.5 ? 290 : 210);
     const spawnX = this.scrollX + this.width + 50 + Math.random() * 200;
 
@@ -457,7 +518,30 @@ export class GameEngine {
       points: picked.points,
       color: picked.color,
       name: picked.name,
-      kind: picked.type.includes('star') ? 'star' : (picked.type.includes('lollipop') ? 'lollipop' : (picked.type.includes('choc') ? 'chocolate' : 'candy'))
+      kind: picked.type.includes('star')
+        ? 'star'
+        : picked.type.includes('lollipop')
+        ? 'lollipop'
+        : picked.type.includes('choc')
+        ? 'chocolate'
+        : 'candy'
+    });
+  }
+
+  spawnSpecialItem() {
+    const isJuice = Math.random() > 0.45;
+    const itemData = isJuice ? SPECIAL_ITEMS[0] : SPECIAL_ITEMS[1];
+    const spawnY = Math.random() > 0.5 ? 290 : 220;
+    const spawnX = this.scrollX + this.width + 80 + Math.random() * 250;
+
+    this.specialItems.push({
+      x: spawnX,
+      y: spawnY,
+      type: itemData.type,
+      name: itemData.name,
+      color: itemData.color,
+      wobble: Math.random() * Math.PI * 2,
+      floatY: 0
     });
   }
 
@@ -482,6 +566,16 @@ export class GameEngine {
     });
   }
 
+  // Fin del turno actual (pierde 1 vida)
+  triggerTurnOver() {
+    this.isRunning = false;
+    sounds.stopBgm();
+    sounds.playGameOver();
+    if (this.callbacks.onTurnOver) {
+      this.callbacks.onTurnOver(this.score);
+    }
+  }
+
   triggerLevelWin() {
     this.isRunning = false;
     sounds.stopBgm();
@@ -500,7 +594,7 @@ export class GameEngine {
     }
   }
 
-  // Creación de partículas
+  // Partículas y efectos
   createSparkles(x, y, count, color) {
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -551,26 +645,15 @@ export class GameEngine {
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     ctx.save();
-    // Aplicar escala y centrado para mantener aspecto en cualquier pantalla
     ctx.translate(this.offsetX, this.offsetY);
     ctx.scale(this.scale, this.scale);
 
-    // 1. Fondo según el escenario (Parque, Ciudad o Peatonal)
     this.drawBackground(ctx);
-
-    // 2. Plataformas flotantes
     this.drawPlatforms(ctx);
-
-    // 3. Golosinas
     this.drawCandies(ctx);
-
-    // 4. Enemigos amigables
+    this.drawSpecialItems(ctx);
     this.drawEnemies(ctx);
-
-    // 5. Jugador (Pedro o Simoné con su foto real y cuerpo animado)
     this.drawPlayer(ctx);
-
-    // 6. Partículas y textos flotantes
     this.drawParticles(ctx);
     this.drawFloatTexts(ctx);
 
@@ -580,14 +663,12 @@ export class GameEngine {
   drawBackground(ctx) {
     const lvl = this.level;
 
-    // Cielo degradado
     const skyGrad = ctx.createLinearGradient(0, 0, 0, 440);
     skyGrad.addColorStop(0, lvl.skyColorTop);
     skyGrad.addColorStop(1, lvl.skyColorBottom);
     ctx.fillStyle = skyGrad;
     ctx.fillRect(0, 0, this.width, this.height);
 
-    // Elementos de fondo específicos según el tema
     if (lvl.theme === 'park') {
       this.drawParkBackground(ctx);
     } else if (lvl.theme === 'city') {
@@ -596,21 +677,17 @@ export class GameEngine {
       this.drawMallBackground(ctx);
     }
 
-    // Suelo
     ctx.fillStyle = lvl.groundColor;
     ctx.fillRect(0, 440, this.width, 100);
 
-    // Detalle de pasto o cordón de vereda
     ctx.fillStyle = lvl.groundSubColor;
     ctx.fillRect(0, 440, this.width, 12);
 
-    // Detalles decorativos en el suelo que se mueven con scroll
     ctx.save();
     const groundOffset = (this.scrollX * 0.8) % 80;
     for (let x = -80; x < this.width + 80; x += 60) {
       const realX = x - groundOffset;
       if (lvl.theme === 'park') {
-        // Pequeñas flores
         ctx.fillStyle = '#F43F5E';
         ctx.beginPath();
         ctx.arc(realX, 458, 4, 0, Math.PI * 2);
@@ -620,11 +697,9 @@ export class GameEngine {
         ctx.arc(realX, 458, 2, 0, Math.PI * 2);
         ctx.fill();
       } else if (lvl.theme === 'city') {
-        // Líneas de calle
         ctx.fillStyle = '#F1F5F9';
         ctx.fillRect(realX, 475, 30, 6);
       } else {
-        // Patrón de baldosas de shopping
         ctx.fillStyle = 'rgba(255,255,255,0.2)';
         ctx.fillRect(realX, 445, 25, 45);
       }
@@ -633,12 +708,11 @@ export class GameEngine {
   }
 
   drawParkBackground(ctx) {
-    // Sol sonriente
     ctx.fillStyle = '#FBBF24';
     ctx.beginPath();
     ctx.arc(120, 90, 42, 0, Math.PI * 2);
     ctx.fill();
-    // Rayos
+
     ctx.strokeStyle = '#F59E0B';
     ctx.lineWidth = 4;
     for (let i = 0; i < 8; i++) {
@@ -648,7 +722,7 @@ export class GameEngine {
       ctx.lineTo(120 + Math.cos(a) * 62, 90 + Math.sin(a) * 62);
       ctx.stroke();
     }
-    // Carita sonriente del sol
+
     ctx.fillStyle = '#78350F';
     ctx.beginPath();
     ctx.arc(108, 85, 3, 0, Math.PI * 2);
@@ -658,20 +732,16 @@ export class GameEngine {
     ctx.arc(120, 92, 12, 0.2, Math.PI - 0.2);
     ctx.stroke();
 
-    // Nubes con parallax
     const cloudOffset = (this.scrollX * 0.2 + this.gameTime * 0.3) % 1200;
     this.drawCloud(ctx, 300 - cloudOffset, 80, 1.1);
     this.drawCloud(ctx, 750 - cloudOffset, 110, 0.9);
     this.drawCloud(ctx, 1200 - cloudOffset, 70, 1.2);
 
-    // Árboles con parallax medio
     const treeOffset = (this.scrollX * 0.5) % 400;
     for (let x = -200; x < this.width + 400; x += 280) {
       const rx = x - treeOffset;
-      // Tronco
       ctx.fillStyle = '#92400E';
       ctx.fillRect(rx + 35, 310, 20, 130);
-      // Copa frondosa
       ctx.fillStyle = '#15803D';
       ctx.beginPath();
       ctx.arc(rx + 45, 290, 48, 0, Math.PI * 2);
@@ -680,10 +750,8 @@ export class GameEngine {
       ctx.fill();
     }
 
-    // Juegos de plaza (un tobogán simpático y columpios al fondo)
     const parkItemOffset = (this.scrollX * 0.7) % 650;
     const itemX = 500 - parkItemOffset;
-    // Tobogán amarillo
     ctx.strokeStyle = '#EAB308';
     ctx.lineWidth = 6;
     ctx.beginPath();
@@ -696,7 +764,6 @@ export class GameEngine {
   }
 
   drawCityBackground(ctx) {
-    // Silueta de edificios coloridos
     const bldgOffset = (this.scrollX * 0.3) % 600;
     const colors = ['#60A5FA', '#F472B6', '#34D399', '#FBBF24', '#A78BFA'];
     for (let i = 0; i < 7; i++) {
@@ -708,7 +775,6 @@ export class GameEngine {
       ctx.fillStyle = colors[i % colors.length];
       ctx.fillRect(bx, by, bw, bh);
 
-      // Ventanitas iluminadas
       ctx.fillStyle = '#FEF9C3';
       for (let wy = by + 20; wy < 420; wy += 35) {
         for (let wx = bx + 15; wx < bx + bw - 15; wx += 25) {
@@ -717,13 +783,11 @@ export class GameEngine {
       }
     }
 
-    // Semáforos y postes de luz
     const postOffset = (this.scrollX * 0.7) % 500;
     for (let x = 100; x < this.width + 400; x += 350) {
       const px = x - postOffset;
       ctx.fillStyle = '#334155';
       ctx.fillRect(px, 310, 8, 130);
-      // Foco redondo
       ctx.fillStyle = '#FEF08A';
       ctx.beginPath();
       ctx.arc(px + 4, 305, 14, 0, Math.PI * 2);
@@ -732,17 +796,14 @@ export class GameEngine {
   }
 
   drawMallBackground(ctx) {
-    // Paseo comercial con vidrieras, toldos de colores y globos
     const shopOffset = (this.scrollX * 0.4) % 650;
     const shopColors = ['#F43F5E', '#8B5CF6', '#06B6D4', '#10B981'];
 
     for (let i = 0; i < 4; i++) {
       const sx = i * 220 - shopOffset;
-      // Fachada
       ctx.fillStyle = '#F8FAFC';
       ctx.fillRect(sx, 220, 200, 220);
 
-      // Toldo a rayas
       ctx.fillStyle = shopColors[i % shopColors.length];
       ctx.fillRect(sx - 10, 210, 220, 35);
       ctx.fillStyle = '#FFFFFF';
@@ -750,14 +811,12 @@ export class GameEngine {
         ctx.fillRect(tx, 210, 20, 35);
       }
 
-      // Vidriera
       ctx.fillStyle = 'rgba(147, 197, 253, 0.45)';
       ctx.fillRect(sx + 15, 270, 170, 150);
       ctx.strokeStyle = '#94A3B8';
       ctx.lineWidth = 3;
       ctx.strokeRect(sx + 15, 270, 170, 150);
 
-      // Cartel luminoso
       ctx.fillStyle = '#FDE047';
       ctx.fillRect(sx + 30, 248, 140, 18);
       ctx.fillStyle = '#1E293B';
@@ -765,7 +824,6 @@ export class GameEngine {
       ctx.fillText(i % 2 === 0 ? '🍬 GOLOSINAS' : '🎈 JUGUETES', sx + 45, 262);
     }
 
-    // Guirnaldas de banderines flotantes
     ctx.strokeStyle = 'rgba(100,100,100,0.3)';
     ctx.beginPath();
     ctx.moveTo(0, 120);
@@ -775,7 +833,7 @@ export class GameEngine {
     const flagOffset = (this.scrollX * 0.2) % 40;
     for (let fx = 20; fx < this.width; fx += 40) {
       const rx = fx - flagOffset;
-      ctx.fillStyle = fx % 80 === 0 ? '#EC4899' : (fx % 60 === 0 ? '#3B82F6' : '#EAB308');
+      ctx.fillStyle = fx % 80 === 0 ? '#EC4899' : fx % 60 === 0 ? '#3B82F6' : '#EAB308';
       ctx.beginPath();
       ctx.moveTo(rx, 135);
       ctx.lineTo(rx + 15, 155);
@@ -803,7 +861,6 @@ export class GameEngine {
       if (drawX + plat.w < -50 || drawX > this.width + 50) continue;
 
       if (plat.type === 'cloud') {
-        // Nube esponjosa como plataforma mágica
         ctx.fillStyle = '#FFFFFF';
         ctx.beginPath();
         ctx.roundRect(drawX, plat.y, plat.w, plat.h, 12);
@@ -812,7 +869,6 @@ export class GameEngine {
         ctx.lineWidth = 3;
         ctx.stroke();
       } else {
-        // Banco de madera o toldo
         ctx.fillStyle = '#F59E0B';
         ctx.beginPath();
         ctx.roundRect(drawX, plat.y, plat.w, plat.h, 6);
@@ -833,18 +889,15 @@ export class GameEngine {
       ctx.save();
       ctx.translate(drawX, drawY);
 
-      // Resplandor
       ctx.shadowColor = c.color;
       ctx.shadowBlur = 10;
 
       if (c.kind === 'candy') {
-        // Caramelo envuelto
         ctx.fillStyle = c.color;
-        // Cuerpo ovalado
         ctx.beginPath();
         ctx.ellipse(0, 0, 16, 11, 0, 0, Math.PI * 2);
         ctx.fill();
-        // Envoltorios en los extremos
+
         ctx.beginPath();
         ctx.moveTo(-14, 0);
         ctx.lineTo(-24, -8);
@@ -859,26 +912,22 @@ export class GameEngine {
         ctx.closePath();
         ctx.fill();
 
-        // Rayita decorativa
         ctx.strokeStyle = '#FFFFFF';
         ctx.lineWidth = 2.5;
         ctx.beginPath();
         ctx.arc(0, 0, 8, -0.6, 0.6);
         ctx.stroke();
       } else if (c.kind === 'chocolate') {
-        // Tableta de chocolate
         ctx.fillStyle = '#78350F';
         ctx.beginPath();
         ctx.roundRect(-16, -12, 32, 24, 4);
         ctx.fill();
-        // Cuadraditos
         ctx.fillStyle = '#92400E';
         ctx.fillRect(-12, -8, 10, 8);
         ctx.fillRect(2, -8, 10, 8);
         ctx.fillRect(-12, 2, 10, 8);
         ctx.fillRect(2, 2, 10, 8);
       } else if (c.kind === 'lollipop') {
-        // Chupetín redondo en espiral con palito
         ctx.strokeStyle = '#F8FAFC';
         ctx.lineWidth = 4;
         ctx.beginPath();
@@ -891,20 +940,103 @@ export class GameEngine {
         ctx.arc(0, -2, 16, 0, Math.PI * 2);
         ctx.fill();
 
-        // Espiral blanco
         ctx.strokeStyle = '#FFFFFF';
         ctx.lineWidth = 2.5;
         ctx.beginPath();
         ctx.arc(0, -2, 10, 0, Math.PI * 1.5);
         ctx.stroke();
       } else if (c.kind === 'star') {
-        // Estrella Arcoíris mágica
         ctx.fillStyle = '#F59E0B';
         this.drawStar(ctx, 0, 0, 5, 20, 9);
         ctx.fill();
         ctx.fillStyle = '#FEF08A';
         this.drawStar(ctx, 0, 0, 5, 12, 5);
         ctx.fill();
+      }
+
+      ctx.restore();
+    }
+  }
+
+  // Dibujar Ítems Especiales (Juguito y Escudo Burbuja)
+  drawSpecialItems(ctx) {
+    for (const item of this.specialItems) {
+      const drawX = item.x - this.scrollX;
+      const drawY = item.y + item.floatY;
+
+      if (drawX < -60 || drawX > this.width + 60) continue;
+
+      ctx.save();
+      ctx.translate(drawX, drawY);
+
+      if (item.type === 'juice') {
+        // Botellita de jugo de frutas 🧃
+        ctx.shadowColor = '#10B981';
+        ctx.shadowBlur = 12;
+
+        // Brick de jugo
+        ctx.fillStyle = '#10B981';
+        ctx.beginPath();
+        ctx.roundRect(-12, -14, 24, 28, 4);
+        ctx.fill();
+
+        // Fruta naranja decorativa en el centro
+        ctx.fillStyle = '#F97316';
+        ctx.beginPath();
+        ctx.arc(0, 2, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Pajita / Sorbete
+        ctx.strokeStyle = '#FACC15';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(4, -14);
+        ctx.lineTo(8, -22);
+        ctx.lineTo(13, -20);
+        ctx.stroke();
+
+        // Texto flotante suave
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('+ENERGÍA', 0, 22);
+      } else if (item.type === 'shield') {
+        // Burbuja protectora brillante 🛡️
+        ctx.shadowColor = '#06B6D4';
+        ctx.shadowBlur = 15;
+
+        // Esfera exterior iridiscente
+        const grad = ctx.createRadialGradient(-4, -4, 2, 0, 0, 18);
+        grad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+        grad.addColorStop(0.4, 'rgba(56, 189, 248, 0.7)');
+        grad.addColorStop(1, 'rgba(6, 182, 212, 0.4)');
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0, 0, 18, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Borde brillante
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Escudo en el centro
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        ctx.moveTo(-6, -7);
+        ctx.lineTo(6, -7);
+        ctx.lineTo(6, 0);
+        ctx.lineTo(0, 7);
+        ctx.lineTo(-6, 0);
+        ctx.closePath();
+        ctx.fill();
+
+        // Texto
+        ctx.fillStyle = '#0891B2';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('ESCUDO', 0, 24);
       }
 
       ctx.restore();
@@ -944,35 +1076,28 @@ export class GameEngine {
       ctx.save();
       ctx.translate(drawX + e.w / 2, drawY + e.h / 2);
 
-      // Animación de correr
       const legAngle = Math.sin(e.animFrame) * 0.45;
 
-      // Piernas
       ctx.strokeStyle = '#1E293B';
       ctx.lineWidth = 5;
       ctx.beginPath();
-      // Pierna izquierda
       ctx.moveTo(-8, 14);
       ctx.lineTo(-8 - Math.sin(legAngle) * 12, 32);
-      // Pierna derecha
       ctx.moveTo(8, 14);
       ctx.lineTo(8 + Math.sin(legAngle) * 12, 32);
       ctx.stroke();
 
-      // Zapatillas
       ctx.fillStyle = '#EF4444';
       ctx.beginPath();
       ctx.arc(-8 - Math.sin(legAngle) * 12 - 2, 32, 6, 0, Math.PI * 2);
       ctx.arc(8 + Math.sin(legAngle) * 12 + 2, 32, 6, 0, Math.PI * 2);
       ctx.fill();
 
-      // Cuerpo / Remera divertida
       ctx.fillStyle = e.clothesColor;
       ctx.beginPath();
       ctx.roundRect(-16, -4, 32, 24, 6);
       ctx.fill();
 
-      // Brazos agitándose
       ctx.strokeStyle = '#FDBA74';
       ctx.lineWidth = 5;
       ctx.beginPath();
@@ -980,9 +1105,7 @@ export class GameEngine {
       ctx.lineTo(-22, -10 + Math.sin(e.animFrame) * 8);
       ctx.stroke();
 
-      // Si es cazador tiene red, si es patinador va sonriendo
       if (e.hat === 'bow') {
-        // Red simpática
         ctx.strokeStyle = '#38BDF8';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -990,35 +1113,29 @@ export class GameEngine {
         ctx.stroke();
       }
 
-      // Cabeza
-      ctx.fillStyle = '#FDBA74'; // Tono de piel de caricatura
+      ctx.fillStyle = '#FDBA74';
       ctx.beginPath();
       ctx.arc(0, -18, 16, 0, Math.PI * 2);
       ctx.fill();
 
-      // Gorrita hacia atrás o accesorio simpático
       ctx.fillStyle = e.capColor;
       ctx.beginPath();
       ctx.arc(0, -22, 17, Math.PI, 0);
       ctx.fill();
-      // Visera de la gorra
       ctx.fillRect(8, -25, 14, 6);
 
-      // Ojos traviesos (mirando a Pedro/Simoné)
       ctx.fillStyle = '#0F172A';
       ctx.beginPath();
       ctx.arc(-6, -17, 3, 0, Math.PI * 2);
       ctx.arc(4, -17, 3, 0, Math.PI * 2);
       ctx.fill();
 
-      // Sonrisa pícara
       ctx.strokeStyle = '#0F172A';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(-1, -12, 6, 0.2, Math.PI - 0.2);
       ctx.stroke();
 
-      // Nombre del chico sobre su cabeza
       ctx.fillStyle = '#FFFFFF';
       ctx.font = 'bold 11px sans-serif';
       ctx.textAlign = 'center';
@@ -1030,7 +1147,7 @@ export class GameEngine {
     }
   }
 
-  // DIBUJO DEL PROTAGONISTA (Pedro o Simoné)
+  // DIBUJO DEL PROTAGONISTA
   drawPlayer(ctx) {
     const p = this.player;
     const drawX = p.x - this.scrollX;
@@ -1039,51 +1156,80 @@ export class GameEngine {
     ctx.save();
     ctx.translate(drawX + p.w / 2, drawY + p.h / 2);
 
-    // Efecto de parpadeo si es invulnerable tras recibir cosquillas
+    // Si tiene invulnerabilidad por golpe
     if (p.invulnerableTimer > 0 && Math.floor(p.invulnerableTimer / 6) % 2 === 0) {
       ctx.globalAlpha = 0.45;
     }
 
-    // Orientación hacia donde camina
+    // Orientación
     if (p.facing === 'left') {
       ctx.scale(-1, 1);
     }
 
-    // Animación de piernas y brazos al correr
+    // BURBUJA PROTECTORA EFECTO VISUAL (5 SEGUNDOS)
+    if (this.shieldTimer > 0) {
+      ctx.save();
+      const pulse = Math.sin(this.gameTime * 0.15) * 3;
+      const radius = 54 + pulse;
+
+      // Resplandor exterior
+      ctx.shadowColor = '#06B6D4';
+      ctx.shadowBlur = 20;
+
+      const shieldGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, radius);
+      shieldGrad.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
+      shieldGrad.addColorStop(0.7, 'rgba(56, 189, 248, 0.35)');
+      shieldGrad.addColorStop(1, 'rgba(6, 182, 212, 0.65)');
+
+      ctx.fillStyle = shieldGrad;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Borde iridiscente de la burbuja
+      ctx.strokeStyle = '#E0F2FE';
+      ctx.lineWidth = 3.5;
+      ctx.stroke();
+
+      // Reflejo blanco en la esquina superior
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.beginPath();
+      ctx.ellipse(-radius * 0.45, -radius * 0.45, radius * 0.25, radius * 0.12, -0.6, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
     const legAngle = Math.sin(p.runCycle) * 0.55;
 
-    // Piernas (Pantalón corto y zapatillas)
+    // Piernas
     ctx.strokeStyle = '#1E3A8A';
     ctx.lineWidth = 6;
     ctx.beginPath();
-    // Pierna trasera
     ctx.moveTo(-8, 16);
     ctx.lineTo(-8 - Math.sin(legAngle) * 16, 36);
-    // Pierna delantera
     ctx.moveTo(8, 16);
     ctx.lineTo(8 + Math.sin(legAngle) * 16, 36);
     ctx.stroke();
 
-    // Zapatillas deportivas con color del personaje
     ctx.fillStyle = this.character.color;
     ctx.beginPath();
     ctx.arc(-8 - Math.sin(legAngle) * 16 - 2, 36, 7, 0, Math.PI * 2);
     ctx.arc(8 + Math.sin(legAngle) * 16 + 2, 36, 7, 0, Math.PI * 2);
     ctx.fill();
 
-    // Cuerpo (Remera con color del personaje)
+    // Cuerpo
     ctx.fillStyle = this.character.shirtColor;
     ctx.beginPath();
     ctx.roundRect(-16, -6, 32, 26, 8);
     ctx.fill();
 
-    // Detalle de estrella o logo en la remera
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(this.character.id === 'pedro' ? 'P' : 'S', 0, 12);
 
-    // Brazos con manitos
+    // Brazos
     ctx.strokeStyle = '#FED7AA';
     ctx.lineWidth = 5;
     ctx.beginPath();
@@ -1093,27 +1239,23 @@ export class GameEngine {
     ctx.lineTo(20, 10 + Math.sin(p.runCycle) * 12);
     ctx.stroke();
 
-    // CABEZA / ROSTRO REAL CON MARCO CIRCULAR AMIGABLE
+    // Rostro Real con Marco
     const headRadius = 24;
     const headCenterY = -22;
 
-    // Resplandor o borde festivo alrededor del rostro
     ctx.beginPath();
     ctx.arc(0, headCenterY, headRadius + 3, 0, Math.PI * 2);
     ctx.fillStyle = this.character.color;
     ctx.fill();
 
-    // Si la imagen real está cargada, la recortamos circularmente
     if (this.playerImgLoaded && this.playerImg.complete && this.playerImg.naturalWidth > 0) {
       ctx.save();
       ctx.beginPath();
       ctx.arc(0, headCenterY, headRadius, 0, Math.PI * 2);
       ctx.clip();
 
-      // Ajuste de zoom y centrado sobre la carita
       const cropSize = Math.min(this.playerImg.naturalWidth, this.playerImg.naturalHeight);
       const cropX = (this.playerImg.naturalWidth - cropSize) / 2;
-      // Para Pedro y Simoné, su carita está en el tercio superior/medio
       const cropY = (this.playerImg.naturalHeight - cropSize) * 0.25;
 
       ctx.drawImage(
@@ -1129,12 +1271,10 @@ export class GameEngine {
       );
       ctx.restore();
     } else {
-      // Dibujo de respaldo si la foto aún está cargando
       ctx.fillStyle = '#FED7AA';
       ctx.beginPath();
       ctx.arc(0, headCenterY, headRadius, 0, Math.PI * 2);
       ctx.fill();
-      // Ojos y sonrisa
       ctx.fillStyle = '#1E293B';
       ctx.beginPath();
       ctx.arc(-7, headCenterY - 2, 3, 0, Math.PI * 2);
@@ -1147,13 +1287,28 @@ export class GameEngine {
       ctx.stroke();
     }
 
-    // Cartelito con el nombre del personaje sobre la cabeza
+    // Mini Barrita de Energía sobre la cabeza
+    const barW = 46;
+    const barH = 6;
+    const barY = headCenterY - headRadius - 10;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(-barW / 2, barY, barW, barH);
+
+    const energyPercent = Math.max(0, this.energy / 100);
+    ctx.fillStyle =
+      this.energy > 50 ? '#10B981' : this.energy > 25 ? '#F59E0B' : '#EF4444';
+    ctx.fillRect(-barW / 2, barY, barW * energyPercent, barH);
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-barW / 2, barY, barW, barH);
+
+    // Nombre del personaje
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center';
     ctx.shadowColor = 'rgba(0,0,0,0.7)';
     ctx.shadowBlur = 4;
-    ctx.fillText(this.character.name, 0, headCenterY - headRadius - 6);
+    ctx.fillText(this.character.name, 0, barY - 4);
 
     ctx.restore();
   }
@@ -1183,4 +1338,3 @@ export class GameEngine {
     }
   }
 }
-

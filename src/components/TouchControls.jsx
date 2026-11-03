@@ -12,7 +12,7 @@ export function TouchControls({ onControl, autoRun, onToggleAutoRun }) {
 
   return (
     <div className="fixed bottom-2 sm:bottom-4 left-0 right-0 z-40 px-3 sm:px-6 pointer-events-none select-none flex justify-between items-end pb-[env(safe-area-inset-bottom)]">
-      
+
       {/* Botones de Dirección (Izquierda / Auto-run / Derecha) */}
       <div className="flex items-center gap-2 pointer-events-auto bg-white/40 backdrop-blur-md p-1.5 rounded-3xl border-2 border-white/50 shadow-2xl">
         {/* Botón Izquierda */}
@@ -33,11 +33,10 @@ export function TouchControls({ onControl, autoRun, onToggleAutoRun }) {
         {/* Botón Auto-Carrera para chicos */}
         <button
           onClick={onToggleAutoRun}
-          className={`h-14 px-2 sm:px-3 rounded-2xl shadow-lg border-3 flex flex-col items-center justify-center transition-all active:scale-95 touch-none ${
-            autoRun
+          className={`h-14 px-2 sm:px-3 rounded-2xl shadow-lg border-3 flex flex-col items-center justify-center transition-all active:scale-95 touch-none ${autoRun
               ? 'bg-emerald-500 border-emerald-300 text-white animate-pulse-fast'
               : 'bg-white/95 border-emerald-400 text-emerald-800'
-          }`}
+            }`}
           title="Activar avance automático para no tener que mantener apretado"
         >
           <Zap size={20} className={autoRun ? 'fill-yellow-300 text-yellow-300' : 'text-emerald-600'} />
