@@ -7,6 +7,7 @@ import { CharacterSelectModal } from './components/CharacterSelectModal';
 import { LevelSelectModal } from './components/LevelSelectModal';
 import { TurnSwitchModal } from './components/TurnSwitchModal';
 import { CompetitionResultsModal } from './components/CompetitionResultsModal';
+import { GameOverModal } from './components/GameOverModal';
 import { VictoryModal } from './components/VictoryModal';
 import { sounds } from './utils/soundEffects';
 
@@ -19,7 +20,14 @@ export function App() {
   const [activeChar, setActiveChar] = useState(CHARACTERS[0]);
   const [currentLevel, setCurrentLevel] = useState(LEVELS[0]);
 
-  // Marcadores de Competencia Intercalada
+  // Modo de Juego: 'solo' (1 Jugador) o 'duel' (2 Jugadores Pedro vs Simoné)
+  const [gameMode, setGameMode] = useState('solo');
+
+  // Estado para Modo Solo
+  const [soloScore, setSoloScore] = useState(0);
+  const [soloLives, setSoloLives] = useState(3);
+
+  // Estado para Modo Duelo (Pedro vs Simoné)
   const [pedroScore, setPedroScore] = useState(0);
   const [simoneScore, setSimoneScore] = useState(0);
   const [pedroLives, setPedroLives] = useState(3);
@@ -43,9 +51,10 @@ export function App() {
   const [showLevelModal, setShowLevelModal] = useState(false);
   const [showTurnModal, setShowTurnModal] = useState(false);
   const [showResultsModal, setShowResultsModal] = useState(false);
+  const [showGameOverModal, setShowGameOverModal] = useState(false);
   const [showVictoryModal, setShowVictoryModal] = useState(false);
 
-  // Datos para el cambio de turno
+  // Datos para el cambio de turno en Modo Duelo
   const [turnSwitchData, setTurnSwitchData] = useState({
     finishedChar: CHARACTERS[0],
     roundPoints: 0,
@@ -54,7 +63,7 @@ export function App() {
     nextLifeNumber: 1
   });
 
-  // Inicializar o reiniciar motor con un personaje específico
+  // Iniciar o reiniciar turno en el motor gráfico
   const startTurn = (charToUse = activeChar, levelToUse = currentLevel) => {
     if (!canvasRef.current) return;
 
@@ -95,71 +104,88 @@ export function App() {
     engine.start();
   };
 
-  // Manejador del fin de turno (cuando pierde su vida actual)
+  // Manejo del fin de una vida (energía a cero)
   const handleTurnEnd = (roundPointsEarned, finishedChar) => {
-    sounds.playTurnSwitch();
+    if (gameMode === 'solo') {
+      // MODO INDIVIDUAL
+      const newSoloScore = soloScore + roundPointsEarned;
+      const newSoloLives = soloLives - 1;
+      setSoloScore(newSoloScore);
+      setSoloLives(newSoloLives);
 
-    let newPedroLives = pedroLives;
-    let newSimoneLives = simoneLives;
-    let newPedroScore = pedroScore;
-    let newSimoneScore = simoneScore;
-
-    if (finishedChar.id === 'pedro') {
-      newPedroLives = Math.max(0, pedroLives - 1);
-      newPedroScore = pedroScore + roundPointsEarned;
-      setPedroLives(newPedroLives);
-      setPedroScore(newPedroScore);
-    } else {
-      newSimoneLives = Math.max(0, simoneLives - 1);
-      newSimoneScore = simoneScore + roundPointsEarned;
-      setSimoneLives(newSimoneLives);
-      setSimoneScore(newSimoneScore);
-    }
-
-    // Comprobar si ambos jugadores ya consumieron sus 3 vidas
-    if (newPedroLives === 0 && newSimoneLives === 0) {
-      setShowResultsModal(true);
-      return;
-    }
-
-    // Determinar quién juega el siguiente turno intercalado
-    const pedroObj = characterList.find((c) => c.id === 'pedro') || characterList[0];
-    const simoneObj = characterList.find((c) => c.id === 'simone') || characterList[1];
-
-    let nextChar;
-    let nextLifeNumber;
-
-    if (finishedChar.id === 'pedro') {
-      if (newSimoneLives > 0) {
-        nextChar = simoneObj;
-        nextLifeNumber = 3 - newSimoneLives + 1;
+      if (newSoloLives <= 0) {
+        // Fin de la partida en Modo Solo
+        setShowGameOverModal(true);
       } else {
-        // Simoné ya no tiene vidas, sigue Pedro si aún le quedan
-        nextChar = pedroObj;
-        nextLifeNumber = 3 - newPedroLives + 1;
+        // Le quedan vidas: recupera energía y continúa
+        sounds.playJuice();
+        if (engineRef.current) {
+          engineRef.current.addFloatText(`¡Vida restante! ❤️ x${newSoloLives}`, engineRef.current.player.x, engineRef.current.player.y - 20, '#EF4444');
+        }
+        startTurn(finishedChar, currentLevel);
       }
     } else {
-      if (newPedroLives > 0) {
-        nextChar = pedroObj;
-        nextLifeNumber = 3 - newPedroLives + 1;
+      // MODO DUELO (PEDRO VS SIMONÉ)
+      sounds.playTurnSwitch();
+
+      let newPedroLives = pedroLives;
+      let newSimoneLives = simoneLives;
+      let newPedroScore = pedroScore;
+      let newSimoneScore = simoneScore;
+
+      if (finishedChar.id === 'pedro') {
+        newPedroLives = Math.max(0, pedroLives - 1);
+        newPedroScore = pedroScore + roundPointsEarned;
+        setPedroLives(newPedroLives);
+        setPedroScore(newPedroScore);
       } else {
-        nextChar = simoneObj;
-        nextLifeNumber = 3 - newSimoneLives + 1;
+        newSimoneLives = Math.max(0, simoneLives - 1);
+        newSimoneScore = simoneScore + roundPointsEarned;
+        setSimoneLives(newSimoneLives);
+        setSimoneScore(newSimoneScore);
       }
+
+      if (newPedroLives === 0 && newSimoneLives === 0) {
+        setShowResultsModal(true);
+        return;
+      }
+
+      const pedroObj = characterList.find((c) => c.id === 'pedro') || characterList[0];
+      const simoneObj = characterList.find((c) => c.id === 'simone') || characterList[1];
+
+      let nextChar;
+      let nextLifeNumber;
+
+      if (finishedChar.id === 'pedro') {
+        if (newSimoneLives > 0) {
+          nextChar = simoneObj;
+          nextLifeNumber = 3 - newSimoneLives + 1;
+        } else {
+          nextChar = pedroObj;
+          nextLifeNumber = 3 - newPedroLives + 1;
+        }
+      } else {
+        if (newPedroLives > 0) {
+          nextChar = pedroObj;
+          nextLifeNumber = 3 - newPedroLives + 1;
+        } else {
+          nextChar = simoneObj;
+          nextLifeNumber = 3 - newSimoneLives + 1;
+        }
+      }
+
+      setTurnSwitchData({
+        finishedChar: finishedChar,
+        roundPoints: roundPointsEarned,
+        finishedTotalScore: finishedChar.id === 'pedro' ? newPedroScore : newSimoneScore,
+        nextChar: nextChar,
+        nextLifeNumber: nextLifeNumber
+      });
+
+      setShowTurnModal(true);
     }
-
-    setTurnSwitchData({
-      finishedChar: finishedChar,
-      roundPoints: roundPointsEarned,
-      finishedTotalScore: finishedChar.id === 'pedro' ? newPedroScore : newSimoneScore,
-      nextChar: nextChar,
-      nextLifeNumber: nextLifeNumber
-    });
-
-    setShowTurnModal(true);
   };
 
-  // Confirmar cambio de turno y reanudar con el siguiente jugador
   const handleContinueNextTurn = () => {
     setShowTurnModal(false);
     const nextPlayer = turnSwitchData.nextChar;
@@ -167,20 +193,25 @@ export function App() {
     startTurn(nextPlayer, currentLevel);
   };
 
-  // Reiniciar la competencia completa (Revancha)
   const handleRestartFullMatch = () => {
     setPedroScore(0);
     setSimoneScore(0);
     setPedroLives(3);
     setSimoneLives(3);
+    setSoloScore(0);
+    setSoloLives(3);
     setShowResultsModal(false);
+    setShowGameOverModal(false);
     setShowTurnModal(false);
     setShowVictoryModal(false);
 
-    // Arranca Pedro en el primer turno
-    const firstChar = characterList.find((c) => c.id === 'pedro') || characterList[0];
-    setActiveChar(firstChar);
-    startTurn(firstChar, currentLevel);
+    if (gameMode === 'solo') {
+      startTurn(activeChar, currentLevel);
+    } else {
+      const firstChar = characterList.find((c) => c.id === 'pedro') || characterList[0];
+      setActiveChar(firstChar);
+      startTurn(firstChar, currentLevel);
+    }
   };
 
   // Resize listener
@@ -252,6 +283,8 @@ export function App() {
     setSimoneScore(0);
     setPedroLives(3);
     setSimoneLives(3);
+    setSoloScore(0);
+    setSoloLives(3);
     startTurn(activeChar, currentLevel);
   };
 
@@ -345,9 +378,9 @@ export function App() {
     }
   };
 
-  // Marcadores combinados para el HUD
   const displayPedroScore = activeChar.id === 'pedro' ? pedroScore + currentTurnScore : pedroScore;
   const displaySimoneScore = activeChar.id === 'simone' ? simoneScore + currentTurnScore : simoneScore;
+  const displaySoloScore = soloScore + currentTurnScore;
 
   return (
     <div className="fixed inset-0 w-full h-[100dvh] bg-slate-900 overflow-hidden select-none flex flex-col items-center justify-center">
@@ -363,10 +396,13 @@ export function App() {
           className="w-full h-full block cursor-pointer touch-none"
         />
 
-        {/* HUD Superior (Marcador Dual Pedro vs Simoné + Barra de Energía + Escudo) */}
+        {/* HUD Superior Adaptable (Solo o Duelo) */}
         {isGameStarted && (
           <NavbarHUD
+            gameMode={gameMode}
             activeChar={activeChar}
+            soloScore={displaySoloScore}
+            soloLives={soloLives}
             pedroScore={displayPedroScore}
             simoneScore={displaySimoneScore}
             pedroLives={pedroLives}
@@ -374,24 +410,30 @@ export function App() {
             energy={energy}
             shieldSeconds={shieldSeconds}
             level={currentLevel}
+            levelProgress={levelProgress}
+            targetScore={currentLevel.targetScore}
             isPaused={isPaused}
             isMuted={isMuted}
             characters={characterList}
             onToggleMute={toggleMute}
             onTogglePause={togglePause}
             onOpenLevelSelect={() => setShowLevelModal(true)}
+            onOpenModeSelect={() => {
+              if (engineRef.current) engineRef.current.stop();
+              setShowCharModal(true);
+            }}
           />
         )}
 
         {/* Cartelito de ayuda para chicos */}
-        {isGameStarted && showHelperHint && !isPaused && !showTurnModal && !showResultsModal && (
+        {isGameStarted && showHelperHint && !isPaused && !showTurnModal && !showResultsModal && !showGameOverModal && (
           <div className="fixed top-24 sm:top-20 left-1/2 -translate-x-1/2 z-30 bg-amber-400 text-slate-900 font-black text-xs sm:text-sm px-4 py-2 rounded-2xl shadow-xl border-2 border-white animate-bounce-slow pointer-events-none text-center">
             👉 ¡Tocá la derecha para correr, arriba para saltar y juntá juguitos 🧃 para recargar energía!
           </div>
         )}
 
         {/* Controles Táctiles en Pantalla */}
-        {isGameStarted && !isPaused && !showTurnModal && !showResultsModal && (
+        {isGameStarted && !isPaused && !showTurnModal && !showResultsModal && !showGameOverModal && (
           <TouchControls 
             onControl={handleTouchControl} 
             autoRun={autoRun}
@@ -418,17 +460,19 @@ export function App() {
         )}
       </div>
 
-      {/* MODAL 1: Pantalla de Inicio / Selección de Quién Empieza */}
+      {/* MODAL 1: Selector de Modo (Solo o Duelo) y Personaje */}
       {showCharModal && (
         <CharacterSelectModal
           selectedCharacter={activeChar}
+          gameMode={gameMode}
           onSelectCharacter={handleSelectCharacter}
+          onSelectGameMode={(mode) => setGameMode(mode)}
           onUpdateCustomPhoto={handleUpdateCustomPhoto}
           onStartGame={handleStartGame}
         />
       )}
 
-      {/* MODAL 2: Cambio de Turno Intercalado (1 vida por turno) */}
+      {/* MODAL 2: Cambio de Turno en Modo Duelo */}
       {showTurnModal && (
         <TurnSwitchModal
           finishedChar={turnSwitchData.finishedChar}
@@ -441,7 +485,7 @@ export function App() {
         />
       )}
 
-      {/* MODAL 3: Gran Final de Competencia (Ganador, Podio y Revancha) */}
+      {/* MODAL 3: Gran Final de Competencia en Modo Duelo */}
       {showResultsModal && (
         <CompetitionResultsModal
           pedroScore={pedroScore}
@@ -451,7 +495,20 @@ export function App() {
         />
       )}
 
-      {/* MODAL 4: Selector de Nivel / Escenarios */}
+      {/* MODAL 4: Game Over en Modo Solo */}
+      {showGameOverModal && (
+        <GameOverModal
+          score={displaySoloScore}
+          character={activeChar}
+          onRestart={handleRestartFullMatch}
+          onChangeCharacter={() => {
+            setShowGameOverModal(false);
+            setShowCharModal(true);
+          }}
+        />
+      )}
+
+      {/* MODAL 5: Selector de Nivel / Escenarios */}
       {showLevelModal && (
         <LevelSelectModal
           currentLevel={currentLevel}
@@ -460,10 +517,10 @@ export function App() {
         />
       )}
 
-      {/* MODAL 5: Victoria de Nivel */}
+      {/* MODAL 6: Victoria de Nivel */}
       {showVictoryModal && (
         <VictoryModal
-          score={currentTurnScore}
+          score={gameMode === 'solo' ? displaySoloScore : currentTurnScore}
           level={currentLevel}
           hasNextLevel={true}
           character={activeChar}
