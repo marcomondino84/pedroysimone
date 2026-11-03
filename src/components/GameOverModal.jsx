@@ -58,3 +58,4 @@ export function GameOverModal({ score, character, onRestart, onChangeCharacter }
     </div>
   );
 }
+

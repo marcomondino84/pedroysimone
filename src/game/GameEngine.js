@@ -12,6 +12,7 @@ export class GameEngine {
     // Estado de juego
     this.isRunning = false;
     this.isPaused = false;
+    this.autoRun = false;
     this.score = 0;
     this.lives = 3;
     this.levelProgress = 0;
@@ -110,6 +111,7 @@ export class GameEngine {
       { x: 1050, y: 250, w: 150, h: 22, type: 'wood' },
       { x: 1300, y: 330, w: 140, h: 22, type: 'cloud' }
     ];
+    this.lastPlatformX = 1300;
   }
 
   resizeCanvas() {
@@ -144,6 +146,11 @@ export class GameEngine {
   stop() {
     this.isRunning = false;
     sounds.stopBgm();
+  }
+
+  toggleAutoRun() {
+    this.autoRun = !this.autoRun;
+    return this.autoRun;
   }
 
   // Métodos de control táctil o externo
@@ -191,7 +198,7 @@ export class GameEngine {
       targetVx -= this.player.speed;
       this.player.facing = 'left';
     }
-    if (this.keys.right) {
+    if (this.keys.right || this.autoRun) {
       targetVx += this.player.speed;
       this.player.facing = 'right';
     }
@@ -244,9 +251,24 @@ export class GameEngine {
       }
     }
 
-    // Límites de pantalla virtual
+    // Límites de pantalla virtual (solo límite izquierdo, la derecha es infinita)
     if (this.player.x < 20) this.player.x = 20;
-    if (this.player.x > 1500) this.player.x = 1500;
+
+    // Generar plataformas continuamente hacia adelante
+    while (this.lastPlatformX < this.player.x + 1600) {
+      this.lastPlatformX += 240 + Math.random() * 120;
+      const py = Math.random() > 0.5 ? 320 : 250;
+      const type = Math.random() > 0.5 ? 'cloud' : 'wood';
+      this.platforms.push({
+        x: this.lastPlatformX,
+        y: py,
+        w: 130 + Math.random() * 40,
+        h: 22,
+        type
+      });
+    }
+    // Descartar plataformas viejas que quedaron muy atrás
+    this.platforms = this.platforms.filter(p => p.x > this.scrollX - 400);
 
     // Suavizado de cámara según posición de Pedro/Simoné
     const targetScroll = this.player.x - this.width * 0.35;
@@ -1161,3 +1183,4 @@ export class GameEngine {
     }
   }
 }
+

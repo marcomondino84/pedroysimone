@@ -18,7 +18,7 @@ export function NavbarHUD({
   const progressPercent = Math.min(100, Math.round((progress / targetScore) * 100));
 
   return (
-    <header className="absolute top-0 left-0 right-0 z-30 p-2 sm:p-4 pointer-events-none select-none">
+    <header className="fixed top-2 left-0 right-0 z-40 px-2 sm:px-4 pointer-events-none select-none pt-[env(safe-area-inset-top)]">
       <div className="max-w-6xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
         
         {/* Personaje y Vidas */}
@@ -137,3 +137,4 @@ export function NavbarHUD({
     </header>
   );
 }
+

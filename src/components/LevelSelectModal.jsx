@@ -84,3 +84,4 @@ export function LevelSelectModal({ currentLevel, onSelectLevel, onClose }) {
     </div>
   );
 }
+

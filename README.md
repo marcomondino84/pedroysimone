@@ -147,3 +147,4 @@ El proyecto ya tiene configurado `base: './'` en `vite.config.js`, por lo que fu
 ---
 
 ¡Que disfruten jugando y recolectando golosinas con Pedro y Simoné! 🍭✨
+

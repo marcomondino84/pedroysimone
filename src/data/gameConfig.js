@@ -86,3 +86,4 @@ export const NAUGHTY_KIDS = [
   { name: 'Lula', capColor: '#8B5CF6', clothesColor: '#10B981', hat: 'bow', phrase: '¡Cosquillas!' },
   { name: 'Nico', capColor: '#06B6D4', clothesColor: '#EAB308', hat: 'skate_helmet', phrase: '¡Por aquí!' }
 ];
+
