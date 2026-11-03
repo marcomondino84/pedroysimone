@@ -26,7 +26,7 @@ export function CharacterSelectModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/80 backdrop-blur-md overflow-y-auto">
       <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full border-4 border-pink-300 p-5 sm:p-8 text-center animate-wiggle-once relative">
-        
+
         {/* Título Principal */}
         <div className="inline-flex items-center gap-2 bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 text-white font-black text-xs sm:text-sm px-4 py-1.5 rounded-full shadow-md uppercase tracking-wider mb-2">
           <Trophy size={16} /> ¡GRAN DUELO DE GOLOSINAS!
@@ -58,11 +58,10 @@ export function CharacterSelectModal({
               <div
                 key={char.id}
                 onClick={() => onSelectCharacter(char)}
-                className={`relative rounded-3xl p-5 border-4 cursor-pointer transition-all duration-300 flex flex-col items-center text-center ${
-                  isSelected
+                className={`relative rounded-3xl p-5 border-4 cursor-pointer transition-all duration-300 flex flex-col items-center text-center ${isSelected
                     ? 'border-pink-500 bg-pink-50/70 shadow-2xl scale-105 ring-4 ring-pink-200'
                     : 'border-slate-200 bg-slate-50/70 hover:border-pink-300 hover:shadow-lg hover:scale-102'
-                }`}
+                  }`}
               >
                 {isSelected && (
                   <div className="absolute top-3 right-3 bg-pink-500 text-white p-1 rounded-full shadow-md animate-bounce-slow">
