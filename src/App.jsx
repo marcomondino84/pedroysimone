@@ -384,9 +384,9 @@ export function App() {
 
   return (
     <div className="fixed inset-0 w-full h-[100dvh] bg-slate-900 overflow-hidden select-none flex flex-col items-center justify-center">
-      
+
       {/* Contenedor del Juego y Canvas */}
-      <div 
+      <div
         className="relative w-full h-full flex items-center justify-center overflow-hidden bg-sky-200"
         onPointerDown={handleCanvasPointerDown}
         onPointerUp={handleCanvasPointerUp}
@@ -434,8 +434,8 @@ export function App() {
 
         {/* Controles Táctiles en Pantalla */}
         {isGameStarted && !isPaused && !showTurnModal && !showResultsModal && !showGameOverModal && (
-          <TouchControls 
-            onControl={handleTouchControl} 
+          <TouchControls
+            onControl={handleTouchControl}
             autoRun={autoRun}
             onToggleAutoRun={toggleAutoRun}
           />
