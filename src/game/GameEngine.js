@@ -20,6 +20,12 @@ export class GameEngine {
     this.gameTime = 0;
     this.targetScore = level.targetScore || 25;
 
+    // Contadores estrictos de ítems especiales por nivel (máx 2 de cada uno)
+    this.maxJuices = 2;
+    this.maxShields = 2;
+    this.spawnedJuices = 0;
+    this.spawnedShields = 0;
+
     // Dimensiones virtuales lógicas
     this.width = 960;
     this.height = 540;
@@ -100,6 +106,8 @@ export class GameEngine {
     this.level = newLevel;
     this.targetScore = newLevel.targetScore;
     this.levelProgress = 0;
+    this.spawnedJuices = 0;
+    this.spawnedShields = 0;
     this.enemies = [];
     this.candies = [];
     this.specialItems = [];
@@ -107,6 +115,8 @@ export class GameEngine {
   }
 
   initPlatforms() {
+    this.spawnedJuices = 0;
+    this.spawnedShields = 0;
     this.platforms = [
       { x: 300, y: 340, w: 140, h: 22, type: 'cloud' },
       { x: 540, y: 260, w: 160, h: 22, type: 'wood' },
@@ -270,16 +280,49 @@ export class GameEngine {
 
     // Generar plataformas continuamente hacia adelante
     while (this.lastPlatformX < this.player.x + 1600) {
-      this.lastPlatformX += 240 + Math.random() * 120;
-      const py = Math.random() > 0.5 ? 320 : 250;
-      const type = Math.random() > 0.5 ? 'cloud' : 'wood';
-      this.platforms.push({
+      this.lastPlatformX += 240 + Math.random() * 100;
+      
+      // Cada tanto se genera una plataforma alta (y = 180) que exige trepar o hacer doble salto
+      const isHighPlatform = Math.random() > 0.55;
+      const py = isHighPlatform ? 185 : (Math.random() > 0.5 ? 265 : 330);
+      const type = isHighPlatform ? 'cloud' : (Math.random() > 0.5 ? 'cloud' : 'wood');
+
+      const newPlat = {
         x: this.lastPlatformX,
         y: py,
-        w: 130 + Math.random() * 40,
+        w: isHighPlatform ? 115 : 140,
         h: 22,
         type
-      });
+      };
+      this.platforms.push(newPlat);
+
+      // ÍTEMS ESPECIALES (MÁXIMO 2 JUGUITOS Y 2 ESCUDOS POR NIVEL)
+      // Solo aparecen en plataformas altas donde hay que trepar o hacer doble salto
+      if (isHighPlatform) {
+        if (this.spawnedJuices < this.maxJuices && (this.spawnedShields >= this.maxShields || Math.random() > 0.5)) {
+          this.spawnedJuices++;
+          this.specialItems.push({
+            x: newPlat.x + newPlat.w / 2,
+            y: newPlat.y - 32,
+            type: 'juice',
+            name: 'Juguito de Frutas',
+            color: '#10B981',
+            wobble: 0,
+            floatY: 0
+          });
+        } else if (this.spawnedShields < this.maxShields) {
+          this.spawnedShields++;
+          this.specialItems.push({
+            x: newPlat.x + newPlat.w / 2,
+            y: newPlat.y - 32,
+            type: 'shield',
+            name: 'Burbuja Protectora',
+            color: '#06B6D4',
+            wobble: 0,
+            floatY: 0
+          });
+        }
+      }
     }
     this.platforms = this.platforms.filter((p) => p.x > this.scrollX - 400);
 
@@ -298,13 +341,6 @@ export class GameEngine {
     if (this.candySpawnTimer > 65) {
       this.candySpawnTimer = 0;
       this.spawnCandy();
-    }
-
-    // Spawner de ítems especiales (Juguitos 🧃 y Burbujas Protectoras 🛡️)
-    this.specialSpawnTimer++;
-    if (this.specialSpawnTimer > 180) {
-      this.specialSpawnTimer = 0;
-      this.spawnSpecialItem();
     }
 
     // Spawner de chicos traviesos (enemigos amigables)
@@ -525,23 +561,6 @@ export class GameEngine {
         : picked.type.includes('choc')
         ? 'chocolate'
         : 'candy'
-    });
-  }
-
-  spawnSpecialItem() {
-    const isJuice = Math.random() > 0.45;
-    const itemData = isJuice ? SPECIAL_ITEMS[0] : SPECIAL_ITEMS[1];
-    const spawnY = Math.random() > 0.5 ? 290 : 220;
-    const spawnX = this.scrollX + this.width + 80 + Math.random() * 250;
-
-    this.specialItems.push({
-      x: spawnX,
-      y: spawnY,
-      type: itemData.type,
-      name: itemData.name,
-      color: itemData.color,
-      wobble: Math.random() * Math.PI * 2,
-      floatY: 0
     });
   }
 
